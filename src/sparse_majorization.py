@@ -15,7 +15,7 @@ marginal_rate = .1
 num_internal_iterations = 100
 landa = .005
 
-size_of_mini_batch = 32
+size_of_mini_batch = 512
 
 
 def landweber_shrinkage(A,landa):
@@ -39,6 +39,12 @@ def initialize_sparse_matrix(dim_atoms,num_samples,num_non_zero_entries):
         vals = np.random.multivariate_normal(np.zeros(num_non_zero_entries), np.eye(num_non_zero_entries))
         init_sparse_coeff[:,n][non_zero_locations] = vals
     return (init_sparse_coeff)
+
+def initialize_block_covs(dim_atoms,dim_embed,initial_tempreture,init_dict):
+    block_sparse_cov = initial_tempreture*np.eye(dim_atoms)
+    block_cross_cov = initial_tempreture*init_dict
+
+    return (block_sparse_cov,block_cross_cov)
 
 
 
@@ -68,9 +74,10 @@ def sparse_vector_majorization_optimizer(init_sparse_matrix,_dictionary,dense_ve
     #Coefficients from the reference (Online Dictionary Learning for Sparse coding)
     if block_index<size_of_mini_batch:
         theta = block_index*size_of_mini_batch
-        beta = (theta+1-size_of_mini_batch)/(theta+1)
     else:
-        beta = size_of_mini_batch**2+block_index-size_of_mini_batch
+        theta = size_of_mini_batch**2+block_index-size_of_mini_batch
+
+    beta = (theta + 1 - size_of_mini_batch) / (theta + 1)
 
     out_sparse_matrix = sparse_matrix_keeper[-1]
     #Update covariance and cross-covariance matrices
@@ -134,5 +141,25 @@ if __name__=="__main__":
     dense_matrix = np.array(dense_matrix)
 
     #Mini-batch learning
+    num_samples,dim_embed = np.shape(dense_matrix)
+    all_indexes = set(range(0,num_samples))
+
+    #Initialization
+    dictionary = initialize_dictionary(dim_embed,dim_atoms)
+
+    block_index = 0
+    while not not len(all_indexes):
+        print("processing block:"+str(block_index))
+        mini_batch_dense_matrix,all_indexes = choose_mini_batch(dense_matrix,all_indexes,size_of_mini_batch)
+        #initialize sparse-matrix
+        sparse_matrix = initialize_sparse_matrix(dim_atoms,size_of_mini_batch,int(dim_atoms/10))
+        sparse_block_cov,sparse_block_cross_cov = initialize_block_covs(dim_atoms,dim_embed,.1,dictionary)
+        #sparcify
+        sparse_matrix,sparse_block_cov,sparse_block_cross_cov = sparse_vector_majorization_optimizer(sparse_matrix,dictionary,mini_batch_dense_matrix,landa,sparse_block_cov,sparse_block_cross_cov,block_index)
+        block_index+=1
+        dictionary = mini_batch_dictionary_update(dictionary,sparse_block_cov,sparse_block_cross_cov)
+
+
+    
 
 
